@@ -48,6 +48,15 @@ On a Kindle with the Kindle Package Manager (KPM), add this fork's repository on
 ;kpm add-repo https://raw.githubusercontent.com/m-tky/koreader-tategumi/master/kpm/manifest.json
 ```
 
+> **Known KPM limitation:** entering this command in the Kindle search bar currently
+> fails because Amazon's `scriptExecutor` rejects characters such as `:` and `.`
+> before KPM starts ([KindleModding/KPM#5](https://github.com/KindleModding/KPM/issues/5)).
+> Run the following command from kterm or a scriptlet instead:
+>
+> ```sh
+> /var/local/kmc/bin/kpm add-repo "https://raw.githubusercontent.com/m-tky/koreader-tategumi/master/kpm/manifest.json"
+> ```
+
 Then install either channel:
 
 ```text
@@ -255,6 +264,15 @@ Kindle Package Manager（KPM）が導入済みの Kindle では、最初に一�
 ```text
 ;kpm add-repo https://raw.githubusercontent.com/m-tky/koreader-tategumi/master/kpm/manifest.json
 ```
+
+> **既知の KPM の制約:** このコマンドを Kindle の検索欄から入力すると、KPM の起動前に
+> Amazon の `scriptExecutor` が `:` や `.` などの文字を拒否するため、現在は失敗します
+> （[KindleModding/KPM#5](https://github.com/KindleModding/KPM/issues/5)）。代わりに kterm
+> または scriptlet から次のコマンドを実行してください:
+>
+> ```sh
+> /var/local/kmc/bin/kpm add-repo "https://raw.githubusercontent.com/m-tky/koreader-tategumi/master/kpm/manifest.json"
+> ```
 
 続いて、利用したいチャンネルをインストールします:
 

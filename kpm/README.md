@@ -9,6 +9,14 @@ On a Kindle with KPM, add it once:
 ;kpm add-repo https://raw.githubusercontent.com/m-tky/koreader-tategumi/master/kpm/manifest.json
 ```
 
+Do not run that command from the Kindle search bar: Amazon's `scriptExecutor`
+rejects `:` and `.` before KPM starts ([KindleModding/KPM#5](https://github.com/KindleModding/KPM/issues/5)).
+Run it from kterm or a scriptlet instead:
+
+```sh
+/var/local/kmc/bin/kpm add-repo "https://raw.githubusercontent.com/m-tky/koreader-tategumi/master/kpm/manifest.json"
+```
+
 Then install one channel:
 
 ```text
