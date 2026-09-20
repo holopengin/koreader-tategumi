@@ -15,7 +15,7 @@ ifdef RELEASE_TAG
 else
   VERSION := $(shell git describe HEAD)
 endif
-RELEASE_EPOCH := $(shell git log -1 --format='%cs' $(word 1,$(subst -, ,$(VERSION))))
+RELEASE_EPOCH := $(shell env TZ=UTC git log -1 --format='%cs' $(word 1,$(subst -, ,$(VERSION))))
 # Only append date if we're not on a whole version, like v2018.11
 ifneq (,$(findstring -,$(VERSION)))
 	VERSION := $(VERSION)_$(RELEASE_DATE)

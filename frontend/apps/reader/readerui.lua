@@ -334,7 +334,7 @@ function ReaderUI:init()
             if not self.document:loadDocument() then
                 self:dealWithLoadDocumentFailure()
             end
-            logger.dbg(string.format("  loading took %.3f seconds", time.to_s(time.since(start_time))))
+            logger.info(string.format("  loading took %.3f seconds", time.to_s(time.since(start_time))))
 
             -- used to read additional settings after the document has been
             -- loaded (but not rendered yet)
@@ -342,7 +342,7 @@ function ReaderUI:init()
 
             start_time = time.now()
             self.document:render()
-            logger.dbg(string.format("  rendering took %.3f seconds", time.to_s(time.since(start_time))))
+            logger.info(string.format("  rendering took %.3f seconds", time.to_s(time.since(start_time))))
 
             -- Uncomment to output the built DOM (for debugging)
             -- logger.dbg(self.document:getHTMLFromXPointer(".0", 0x6830))
@@ -774,6 +774,7 @@ function ReaderUI:doShowReader(file, provider, seamless)
             end
         end
     end
+    local start_time = time.now()
     local reader = ReaderUI:new{
         dimen = Screen:getSize(),
         covers_fullscreen = true, -- hint for UIManager:_repaint()
@@ -783,6 +784,7 @@ function ReaderUI:doShowReader(file, provider, seamless)
     }
     self.reloading = nil
     self.after_open_callback = nil
+    logger.info(string.format("  opening took %.3f seconds", time.to_s(time.since(start_time))))
 
     Screen:setWindowTitle(reader.doc_props.display_title)
     Device:notifyBookState(reader.doc_props.display_title, document)

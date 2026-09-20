@@ -867,6 +867,8 @@ function InputText:onKeyPress(key)
             self:addChars("    ")
         elseif key["Back"] then
             self:keyBack()
+        elseif key["F9"] then
+            self:toggleKeyboard()
         else
             handled = false
         end
@@ -928,14 +930,18 @@ function InputText:onKeyPress(key)
             FocusManagerInstance = FocusManager:new{}
         end
         local is_alternative_key = FocusManagerInstance:isAlternativeKey(key)
-        if not is_alternative_key and Device:isSDL() then
-            -- SDL already insert char via TextInput event
-            -- Stop event propagate to FocusManager
+        if not is_alternative_key and Device:hasKeyboardTextInput() then
+            if key["PrintScr"] or key["F8"] then
+                -- Keep physical keyboard screenshot shortcuts working in InputText.
+                return false
+            end
+            -- SDL and an external keyboard already emit TextInput.
+            -- Stop propagation to FocusManager.
             return true
         end
         -- if it is single text char, insert it
         local key_code = key.key -- is in upper case
-        if not Device.isSDL() and #key_code == 1 then
+        if not Device:hasKeyboardTextInput() and #key_code == 1 then
             if key["Shift"] and key["Alt"] and key["G"] then
                 -- Allow the screenshot keyboard-shortcut to work when focus is on InputText
                 return false
