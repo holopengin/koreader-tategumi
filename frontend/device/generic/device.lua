@@ -155,7 +155,6 @@ local Device = {
     isKobo = no,
     isPocketBook = no,
     isRemarkable = no,
-    isSonyPRSTUX = no,
     isSDL = no,
     isEmulator = no,
     isDesktop = no,
@@ -374,6 +373,12 @@ function Device:init()
     if not self:hasWifiToggle() then
         self.hasSeamlessWifiToggle = no
     end
+end
+
+-- True if the active input layer emits TextInput events for physical keys.
+-- InputText then defers insertion to onTextInput instead of using the key name.
+function Device:hasKeyboardTextInput()
+    return self.input.hw_text_layout ~= nil
 end
 
 function Device:setScreenDPI(dpi_override)
