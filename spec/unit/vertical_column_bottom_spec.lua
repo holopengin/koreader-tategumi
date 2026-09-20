@@ -423,4 +423,62 @@ p { margin: 0; padding: 0; }
         assert.is_true(glyph_bottom <= active_bottom,
             "the hanging glyph extended beyond the expanded active clip")
     end)
+
+    it("wraps the character before the final stop #reported_sentence_wrap", function()
+        local BB = require("ffi/blitbuffer")
+        local original_bb = Screen.bb
+        local original_w, original_h = Screen.screen_size.w, Screen.screen_size.h
+        Screen.bb = BB.new(1264, 1680, original_bb:getType())
+        Screen.screen_size.w, Screen.screen_size.h = 1264, 1680
+
+        -- The prefix puts the reported ending at the next column boundary.
+        -- The old shrink estimate kept う at the bottom while drawing only 。.
+        local path = os.tmpname() .. ".xhtml"
+        local sentence = "「もう安心大丈夫です」と美禰子が、よし子を顧みて言った。よし子は「まあよかった」という。"
+        local f = assert(io.open(path, "wb"))
+        f:write([[<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><head><style>
+html, body { margin: 0; padding: 0; }
+body { writing-mode: vertical-rl; }
+p { margin: 0; padding: 0; text-align: justify; }
+</style></head><body><p>]], string.rep("あ", 42), sentence, "</p></body></html>")
+        f:close()
+
+        local reader = ReaderUI:new{
+            dimen = Screen:getSize(),
+            document = DocumentRegistry:openDocument(path),
+        }
+        UIManager:show(reader)
+        reader.font:onSetFont("TBMincho")
+        reader.font:onSetFontSize(17)
+        reader.font:onSetLineSpace(125)
+        reader.font:onSetWordSpacing({95, 75})
+        reader.typeset:onSetPageTopAndBottomMargin({30, 20})
+        reader.typography:onToggleFloatingPunctuation(true)
+        fastforward_ui_events()
+
+        local hits = reader.document:findAllText("う。", false, 0, 10, false)
+        assert.truthy(hits and hits[1], "target ending missing")
+        reader.rolling:onGotoXPointer(hits[1].start)
+        fastforward_ui_events()
+        local screenshot_path = os.getenv("KOREADER_REPORTED_SENTENCE_SCREENSHOT")
+        if screenshot_path then
+            Screen:shot(screenshot_path)
+            print("[reported_sentence_wrap] screenshot=" .. screenshot_path)
+        end
+        local u_y, u_x = reader.document:getScreenPositionFromXPointer(hits[1].start)
+        print(string.format("[reported_sentence_wrap] u=(%d,%d) screen_h=%d",
+            u_x, u_y, Screen:getHeight()))
+        assert.is_true(u_y < Screen:getHeight() / 2,
+            "う stayed beyond the bottom of its column instead of wrapping")
+
+        reader:onClose()
+        UIManager:quit()
+        UIManager._exit_code = nil
+        DocSettings.updateLocation(path)
+        os.remove(path)
+        Screen.bb:free()
+        Screen.bb = original_bb
+        Screen.screen_size.w, Screen.screen_size.h = original_w, original_h
+    end)
 end)
