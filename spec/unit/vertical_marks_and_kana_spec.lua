@@ -20,9 +20,11 @@ placement parity with kerning=best:
      centre inside the glyph's own sbox under each non-HarfBuzz mode and
      require it to match kerning=best within a few pixels.
 
-  5. Column-top alignment: a column starting with 「 (JLReq 3.1.10
-     line-start swallow) puts its first ink at the same offset as a
-     漢-first column, in every mode.
+  5. Line-start quotes (JLReq 3.1.10): a column starting with 「 puts
+     ~half an em of whitespace BEFORE its ink (matching other columns'
+     rhythm), and the bracket consumes a full em at line start so every
+     following character stays aligned with the other columns — in every
+     mode.  Mid-line half-em compaction is untouched.
   6. text-indent stays on the em grid: 1.2em and 2em indents differ
      from a zero-indent control by whole ems only.
 
@@ -450,8 +452,9 @@ describe("Vertical marks", function()
             UIManager:quit()
         end)
 
-        -- First ink row of `word`'s box, allowing one em of overhang above the
-        -- box (an unswallowed in-slot shift can push ink outside the slot).
+        -- First ink row of `word`'s box, allowing a full em of overhang above
+        -- and below (line-start geometry can place ink outside the nominal
+        -- slot while we are measuring it).
         local function first_ink_offset(word_str)
             local hits = find_boxes_with_word(collect_all_sboxes(doc), word_str)
             if #hits == 0 then return nil, "sbox not found: " .. word_str end
@@ -461,29 +464,41 @@ describe("Vertical marks", function()
             local win_h = (box.y + box.h + em) - win_y
             local r0 = ink_bbox(box.x, win_y, box.w, win_h)
             if not r0 then return nil, "no ink near sbox of " .. word_str end
-            return { off = r0 - box.y, y = box.y }
+            return { off = r0 - box.y, y = box.y, h = box.h, box = box }
         end
 
         for _, m in ipairs(kerning_modes) do
-            it("kerning=" .. m.name .. ": quote-first column tops align with kanji-first", function()
+            it("kerning=" .. m.name .. ": quote-first column keeps half-em lead-in and full-em advance", function()
                 set_kerning(readerui, m.mode)
                 local q, qwhy = first_ink_offset("「")
                 local k, kwhy = first_ink_offset("漢")
+                local nxt, nwhy = first_ink_offset("引") -- 2nd char of the quote line
                 if not q then pending(qwhy) return end
                 if not k then pending(kwhy) return end
+                if not nxt then pending(nwhy) return end
                 local label = string.format("[kerning=%s]", m.name)
-                -- Slots must align (layout contract)...
+                local em = k.h
+                -- Slots must align across columns (layout contract)...
                 assert.truthy(math.abs(q.y - k.y) <= 2,
                     string.format("%s slot tops differ: quote y=%d vs kanji y=%d",
                         label, q.y, k.y))
-                -- ...and so must the ink: JLReq 3.1.10 line-start swallow keeps
-                -- a leading opening bracket's ink on the column top instead of
-                -- shifting it by the JFM in-slot cwa (about half an em).
-                assert.truthy(math.abs(q.off - k.off) <= 3,
+                -- ...the quote's ink starts AFTER ~half an em of whitespace
+                -- (JLReq 3.1.10 line-start: whitespace first, then the glyph)...
+                local lead = q.off - k.off
+                assert.truthy(math.abs(lead - em / 2) <= 3,
                     string.format(
-                        "%s quote-first ink off by %.0fpx vs kanji-first "..
-                        "(offsets %d vs %d): JLReq 3.1.10 line-start swallow missing",
-                        label, math.abs(q.off - k.off), q.off, k.off))
+                        "%s quote lead-in = %dpx, expected ~half an em (%dpx): "..
+                        "whitespace must come before the line-start bracket",
+                        label, lead, em / 2))
+                -- ...and the line-start bracket consumes a FULL em so every
+                -- subsequent character lines up with the other columns
+                -- (mid-line half-em compaction must not apply at line start).
+                local adv = nxt.y - q.y
+                assert.truthy(adv == em,
+                    string.format(
+                        "%s line-start 「 advances %dpx, expected a full em (%dpx): "..
+                        "subsequent characters drift against other columns",
+                        label, adv, em))
             end)
         end
     end)
