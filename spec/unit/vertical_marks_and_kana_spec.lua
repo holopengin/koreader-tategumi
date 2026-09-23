@@ -20,6 +20,12 @@ placement parity with kerning=best:
      centre inside the glyph's own sbox under each non-HarfBuzz mode and
      require it to match kerning=best within a few pixels.
 
+  5. Column-top alignment: a column starting with 「 (JLReq 3.1.10
+     line-start swallow) puts its first ink at the same offset as a
+     漢-first column, in every mode.
+  6. text-indent stays on the em grid: 1.2em and 2em indents differ
+     from a zero-indent control by whole ems only.
+
 Fixture: spec/unit/fixtures/marks_vertical.epub (fork-only, in this repo
 rather than the shared test-data submodule: …… / 値段は――高い。 /
 タワーーー / Read this book, plus ゆっくり for small kana).
@@ -411,5 +417,143 @@ describe("Vertical marks", function()
                         label, math.abs(got.cy - best.cy), got.cy, best.cy))
             end
         end)
+    end)
+
+    describe("column-top alignment for leading quotes", function()
+        local readerui, doc
+
+        setup(function()
+            readerui = ReaderUI:new{
+                dimen = Screen:getSize(),
+                document = DocumentRegistry:openDocument(epub_path),
+            }
+        end)
+
+        teardown(function()
+            readerui:onClose()
+        end)
+
+        before_each(function()
+            UIManager:show(readerui)
+            if readerui.styletweak then
+                readerui.styletweak.book_style_tweak =
+                    "body { writing-mode: vertical-rl !important; }"
+                readerui.styletweak.book_style_tweak_enabled = true
+                readerui.styletweak:updateCssText(true)
+            end
+            readerui.rolling:onGotoPage(1)
+            fastforward_ui_events()
+            doc = readerui.document
+        end)
+
+        after_each(function()
+            UIManager:quit()
+        end)
+
+        -- First ink row of `word`'s box, allowing one em of overhang above the
+        -- box (an unswallowed in-slot shift can push ink outside the slot).
+        local function first_ink_offset(word_str)
+            local hits = find_boxes_with_word(collect_all_sboxes(doc), word_str)
+            if #hits == 0 then return nil, "sbox not found: " .. word_str end
+            local box = hits[1]
+            local em = box.h
+            local win_y = math.max(0, box.y - em)
+            local win_h = (box.y + box.h + em) - win_y
+            local r0 = ink_bbox(box.x, win_y, box.w, win_h)
+            if not r0 then return nil, "no ink near sbox of " .. word_str end
+            return { off = r0 - box.y, y = box.y }
+        end
+
+        for _, m in ipairs(kerning_modes) do
+            it("kerning=" .. m.name .. ": quote-first column tops align with kanji-first", function()
+                set_kerning(readerui, m.mode)
+                local q, qwhy = first_ink_offset("「")
+                local k, kwhy = first_ink_offset("漢")
+                if not q then pending(qwhy) return end
+                if not k then pending(kwhy) return end
+                local label = string.format("[kerning=%s]", m.name)
+                -- Slots must align (layout contract)...
+                assert.truthy(math.abs(q.y - k.y) <= 2,
+                    string.format("%s slot tops differ: quote y=%d vs kanji y=%d",
+                        label, q.y, k.y))
+                -- ...and so must the ink: JLReq 3.1.10 line-start swallow keeps
+                -- a leading opening bracket's ink on the column top instead of
+                -- shifting it by the JFM in-slot cwa (about half an em).
+                assert.truthy(math.abs(q.off - k.off) <= 3,
+                    string.format(
+                        "%s quote-first ink off by %.0fpx vs kanji-first "..
+                        "(offsets %d vs %d): JLReq 3.1.10 line-start swallow missing",
+                        label, math.abs(q.off - k.off), q.off, k.off))
+            end)
+        end
+    end)
+
+    describe("text-indent stays on the em grid", function()
+        local readerui, doc
+
+        setup(function()
+            readerui = ReaderUI:new{
+                dimen = Screen:getSize(),
+                document = DocumentRegistry:openDocument(epub_path),
+            }
+        end)
+
+        teardown(function()
+            readerui:onClose()
+        end)
+
+        before_each(function()
+            UIManager:show(readerui)
+            if readerui.styletweak then
+                readerui.styletweak.book_style_tweak =
+                    "body { writing-mode: vertical-rl !important; }"
+                readerui.styletweak.book_style_tweak_enabled = true
+                readerui.styletweak:updateCssText(true)
+            end
+            readerui.rolling:onGotoPage(1)
+            fastforward_ui_events()
+            doc = readerui.document
+        end)
+
+        after_each(function()
+            UIManager:quit()
+        end)
+
+        local function first_word_box(word_str)
+            local hits = find_boxes_with_word(collect_all_sboxes(doc), word_str)
+            if #hits == 0 then return nil end
+            return hits[1]
+        end
+
+        for _, m in ipairs(kerning_modes) do
+            it("kerning=" .. m.name .. ": indents differ from control in whole ems", function()
+                set_kerning(readerui, m.mode)
+                local control = first_word_box("べ")     -- text-indent: 0
+                local ind12   = first_word_box("ぜ")     -- text-indent: 1.2em
+                local ind20   = first_word_box("ぽ")     -- text-indent: 2em
+                if not control or not ind12 or not ind20 then
+                    pending("indent-control words not found (fixture/layout issue)")
+                    return
+                end
+                local label = string.format("[kerning=%s]", m.name)
+                local em = control.h -- single-char CJK box = one em slot
+                local d12 = ind12.y - control.y
+                local d20 = ind20.y - control.y
+                assert.truthy(d12 > 0 and d20 > d12,
+                    string.format("%s indent deltas not ordered: 1.2em=%d 2em=%d",
+                        label, d12, d20))
+                -- The 2em case is exact by construction; 1.2em (28px at the
+                -- fixture's 24px em) is what lengthToPx truncates — vertical
+                -- mode must snap it back onto the em grid.
+                assert.truthy(d12 % em == 0,
+                    string.format(
+                        "%s 1.2em indent = %dpx, not a whole em (%dpx): "..
+                        "vertical text-indent off the embox grid",
+                        label, d12, em))
+                assert.truthy(d20 % em == 0,
+                    string.format("%s 2em indent = %dpx, not a whole em (%dpx)",
+                        label, d20, em))
+            end)
+        end
     end)
 end)
