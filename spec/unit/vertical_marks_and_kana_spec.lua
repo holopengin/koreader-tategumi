@@ -227,6 +227,36 @@ describe("Vertical marks", function()
         fastforward_ui_events()
     end
 
+    -- Down-column y of a punctuation-free run's characters, in order,
+    -- restricted to one column (x of the run's first char).  Shared with
+    -- the grid describe below (must live in the outer scope).
+    local GRID_TEXT = { "れ", "ん", "ぱ", "い", "こ", "う", "さ", "く", "じ" }
+    local function grid_positions(doc)
+        local boxes = collect_all_sboxes(doc)
+        local heads = find_boxes_with_word(boxes, GRID_TEXT[1])
+        if #heads == 0 then return nil, nil, "grid paragraph not found" end
+        local x0 = heads[1].x
+        local em = heads[1].h
+        local prev_y = heads[1].y - 1
+        local ys = { heads[1].y }
+        for i = 2, #GRID_TEXT do
+            local want = nil
+            for _, b in ipairs(boxes) do
+                if b.word == GRID_TEXT[i] and b.x == x0 and b.y > prev_y
+                        and (not want or b.y < want) then
+                    want = b.y
+                end
+            end
+            -- nil = the paragraph wrapped into its next column; only the
+            -- first (non-last) column matters for the justify-smear check.
+            if not want then break end
+            prev_y = want
+            table.insert(ys, want)
+        end
+        if #ys < 4 then return nil, nil, "first column too short: " .. #ys end
+        return ys, em, nil
+    end
+
     local kerning_modes = {
         { name = "off",  mode = 0 },
         { name = "fast", mode = 1 },
@@ -546,6 +576,7 @@ describe("Vertical marks", function()
                 local control = first_word_box("べ")     -- text-indent: 0
                 local ind12   = first_word_box("ぜ")     -- text-indent: 1.2em
                 local ind20   = first_word_box("ぽ")     -- text-indent: 2em
+                local tail12  = first_word_box("ち")     -- 1.2em + cjk-tailored hint
                 if not control or not ind12 or not ind20 then
                     pending("indent-control words not found (fixture/layout issue)")
                     return
@@ -559,15 +590,86 @@ describe("Vertical marks", function()
                         label, d12, d20))
                 -- The 2em case is exact by construction; 1.2em (28px at the
                 -- fixture's 24px em) is what lengthToPx truncates — vertical
-                -- mode must snap it back onto the em grid.
-                assert.truthy(d12 % em == 0,
+                -- mode must snap it back onto the em grid: exactly 1em.
+                assert.truthy(d12 == em,
                     string.format(
-                        "%s 1.2em indent = %dpx, not a whole em (%dpx): "..
+                        "%s 1.2em indent = %dpx, expected exactly one em (%dpx): "..
                         "vertical text-indent off the embox grid",
                         label, d12, em))
-                assert.truthy(d20 % em == 0,
-                    string.format("%s 2em indent = %dpx, not a whole em (%dpx)",
-                        label, d20, em))
+                assert.truthy(d20 == 2 * em,
+                    string.format("%s 2em indent = %dpx, expected %dpx",
+                        label, d20, 2 * em))
+                -- The cjk-tailored rounding ceilings 1.2em to 2em (a
+                -- horizontal/clreq-flavoured choice); vertical must keep the
+                -- floor so the indent stays a whole-but-short em.
+                if tail12 then
+                    local dt = tail12.y - control.y
+                    -- Floor = 1em, ceiling = 2em; +-half em of tolerance
+                    -- absorbs the first-glyph lsb fit, so this compares
+                    -- magnitude only: anything near 2em means the tailored
+                    -- ceiling fired in vertical mode.
+                    assert.truthy(dt > em / 2 and dt < 3 * em / 2,
+                        string.format(
+                            "%s cjk-tailored 1.2em indent = %dpx: vertical must "..
+                            "floor to one em (%dpx), not ceiling to two (%dpx)",
+                            label, dt, em, 2 * em))
+                end
+            end)
+        end
+    end)
+
+    describe("monospace em grid", function()
+        local readerui, doc
+
+        setup(function()
+            readerui = ReaderUI:new{
+                dimen = Screen:getSize(),
+                document = DocumentRegistry:openDocument(epub_path),
+            }
+        end)
+
+        teardown(function()
+            readerui:onClose()
+        end)
+
+        before_each(function()
+            UIManager:show(readerui)
+            if readerui.styletweak then
+                readerui.styletweak.book_style_tweak =
+                    "body { writing-mode: vertical-rl !important; }"
+                readerui.styletweak.book_style_tweak_enabled = true
+                readerui.styletweak:updateCssText(true)
+            end
+            readerui.rolling:onGotoPage(1)
+            fastforward_ui_events()
+            doc = readerui.document
+        end)
+
+        after_each(function()
+            UIManager:quit()
+        end)
+
+        for _, m in ipairs(kerning_modes) do
+            it("kerning=" .. m.name .. ": punctuation-free column sits on the em grid", function()
+                set_kerning(readerui, m.mode)
+                local ys, em, why = grid_positions(doc)
+                if not ys then pending(why) return end
+                local label = string.format("[kerning=%s]", m.name)
+                -- Japanese vertical text is essentially monospace: with no
+                -- punctuation and no CJK<->non-CJK boundaries, every JFM glue
+                -- term is zero, so character n must sit at exactly n*em.
+                -- Default text-align:justify smears the column's leftover
+                -- across the gaps (fractional/1-px steps), which shows up as
+                -- cumulative drift here.
+                for i = 2, #ys do
+                    local step = ys[i] - ys[i - 1]
+                    local cum = (ys[i] - ys[1]) - (i - 1) * em
+                    assert.truthy(step == em,
+                        string.format(
+                            "%s char %d steps %dpx (cumulative drift %+dpx), "..
+                            "expected %dpx per em: leftover justify smear broke the grid",
+                            label, i, step, cum, em))
+                end
             end)
         end
     end)

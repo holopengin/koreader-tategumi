@@ -115,7 +115,7 @@ p { margin: 0; text-align: justify; }
         return readerui
     end
 
-    it("justifies non-final CJK columns to within 2px of the page bottom", function()
+    it("fills non-final CJK columns to within one em — no leftover smear, grid kept", function()
         local readerui = open_reader()
         apply_css(readerui, "auto")
         readerui.rolling:onGotoPage(1)
@@ -141,8 +141,13 @@ p { margin: 0; text-align: justify; }
             end
         end
         if checked < 2 then pending("not enough full non-final columns found"); return end
-        assert.truthy(best_shortfall <= 2,
-            string.format("best full-column shortfall=%dpx; expected <=2px", best_shortfall))
+        -- Non-final columns are start-filled: greedy fill leaves at most the
+        -- last glyph's advance (~one em) of ragged bottom, and the leftover
+        -- is deliberately NOT smeared across the gaps (monospace em grid —
+        -- see the fork note in alignLineHorizontalVerticalPostPass).
+        assert.truthy(best_shortfall <= em + 2,
+            string.format("best full-column shortfall=%dpx; expected <= one em + 2 (%dpx)",
+                best_shortfall, em + 2))
     end)
 
     it("keeps text-align-last:auto ragged but allows text-align-last:justify", function()
